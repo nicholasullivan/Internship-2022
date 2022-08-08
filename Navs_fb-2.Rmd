@@ -1,0 +1,319 @@
+---
+title: "Defining an Efficient Fastball"
+author: "Nicholas Sullivan"
+date: '2022-08-12'
+output:
+  word_document: default
+  pdf_document: default
+bibliography: sources.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, fig.width = 4, fig.height = 3)
+
+library(tidyverse)
+```
+
+Over the past five to ten years, the art of pitching has evolved and transformed alongside the introduction of a wealth of intricate data and metrics on the movement and forces on a baseball. Pitcher's continue to search for competitive advantages over their opponents; yet, many pitchers use altering approaches to achieve that advantage due to mechanical differences and varying schools of thought about pitch arsenal, most effective metrics, and importance of strikeouts versus weak contact.
+
+This summer, I had the opportunity to work for a collegiate summer league team in the New England Collegiate Baseball League, the North Shore Navigators of Lynn, MA, as a data analytics intern. I collected in-game data and video at all home games through TrackMan and Synergy. With access to all pitch-by-pitch TrackMan data from the Navigators' games, I decided to look at and analyze the fastball data of the team's pitchers. Fastballs rely on backspin that causes the ball to rise against the gravitational force pulling the ball down. Therefore, a ball with a higher spin rate is expected to rise more and be more effective at getting whiffs or weak fly-balls. Comparing pitchers with above and below average spin rate to average spin rate, I am curious at how big of a difference spin rate truly makes in generating whiffs and defining an effective fastball. Further, I will dive into other metrics that measure or effect a fastball and compare how these metrics line up with spin rate.
+
+## Manipulating TrackMan Data
+
+To start, I compiled all the data from each individual game, and filtered for all fastballs thrown by Navigators. This process was much more complex than expected, due to untagged pitch types. TrackMan automatically tags each pitch based off its numbers, however, these can be skewed from a pitcher's actual pitch arsenal. If all TrackMan operators in the league manually tagged pitches, it would be much easier to use those values - however, many did not, including myself for the first half of the season. Further, I wanted to classify all fastballs together, despite differences between sinkers, cutters, and four-seamers. 
+
+```{r Data}
+season_dat <- rbind(read.csv("TM_data\\20220607-DoddStadium-1.csv"),
+                    read.csv("TM_data\\20220608-OldMountain-1.csv"),
+                    read.csv("TM_data\\20220610-FraserField-1.csv"),
+                    read.csv("TM_data\\20220611-MackenzieStadium-1.csv"),
+                    read.csv("TM_data\\20220612-FraserField-1.csv"),
+                    read.csv("TM_data\\20220614-NorthAdams-1.csv"),
+                    read.csv("TM_data\\20220615-FraserField-1.csv"),
+                    read.csv("TM_data\\20220616-FraserField-1.csv"),
+                    read.csv("TM_data\\20220617-MontpelierRecreation-1.csv"),
+                    read.csv("TM_data\\20220618-FraserField-1_unverified.csv"),
+                    read.csv("TM_data\\20220619-FraserField-1.csv"),
+                    read.csv("TM_data\\20220619-FraserField-2.csv"),
+                    read.csv("TM_data\\20220620-FraserField-2.csv"),
+                    read.csv("TM_data\\20220621-SharkTank-1_unverified.csv"),
+                    read.csv("TM_data\\20220621-SharkTank-2_unverified.csv"),
+                    read.csv("TM_data\\20220623-GoodallPark-1.csv"),
+                    read.csv("TM_data\\20220624-FraserField-1.csv"),
+                    read.csv("TM_data\\20220625-MuzzyField-1_unverified.csv"),
+                    read.csv("TM_data\\20220628-OldMountain-1.csv"),
+                    read.csv("TM_data\\20220629-FraserField-1.csv"),
+                    read.csv("TM_data\\20220630-FraserField-1.csv"),
+                    read.csv("TM_data\\20220701-SharkTank-1_unverified.csv"),
+                    read.csv("TM_data\\20220701-SharkTank-2_unverified.csv"),
+                    read.csv("TM_data\\20220703-DoddStadium-1.csv"),
+                    read.csv("TM_data\\20220704-CardinesField-1.csv"),
+                    read.csv("TM_data\\20220706-FraserField-3.csv"),
+                    read.csv("TM_data\\20220708-FraserField-1.csv"),
+                    read.csv("TM_data\\20220709-FraserField-2.csv"),
+                    read.csv("TM_data\\20220709-FraserField-3.csv"),
+                    read.csv("TM_data\\20220710-MaxfieldSC-1.csv"),
+                    read.csv("TM_data\\20220711-CardinesField-1.csv"),
+                    read.csv("TM_data\\20220713-FraserField-1.csv"),
+                    read.csv("TM_data\\20220715-FraserField-1.csv"),
+                    read.csv("TM_data\\20220717-FraserField-1.csv"),
+                    read.csv("TM_data\\20220717-FraserField-2.csv"),
+                    read.csv("TM_data\\20220718-CardinesField-1.csv"),
+                    read.csv("TM_data\\20220719-OldMountain-1.csv"),
+                    read.csv("TM_data\\20220720-FraserField-1.csv"),
+                    read.csv("TM_data\\20220722-FraserField-1.csv"),
+                    read.csv("TM_data\\20220725-RobbieMillsField-2_unverified.csv"),
+                    read.csv("TM_data\\20220726-DoddStadium-1.csv"),
+                    read.csv("TM_data\\20220727-CardinesField-1_unverified.csv"),
+                    read.csv("TM_data\\20220728-FraserField-1.csv"),
+                    read.csv("TM_data\\20220730-SharkTank-1.csv"),
+                    read.csv("TM_data\\20220731-RogersPark-1.csv"))
+
+#missing one game from July 21st at Keene. No data apparently collected
+
+navs_pitchers <- season_dat %>%
+  filter(PitcherTeam == "NSH_N") %>%
+  select(Date:PlateLocSide, -Time, -PAofInning, -PitchofPA, -PitcherTeam, -Batter, -BatterId, -BatterTeam, -PitcherSet, -Inning, -Top.Bottom, -Notes) %>%
+  mutate(AutoPitchType = factor(AutoPitchType), PitcherThrows = factor(PitcherThrows)) %>%
+  mutate(Pitcher = ifelse(Pitcher == "mcdonald, tyler", "McDonald, Tyler", as.character(Pitcher)),
+         Pitcher = ifelse(Pitcher == "Ogden, J.D", "Ogden, JD", as.character(Pitcher)),
+         Pitcher = ifelse(Pitcher == "Ogden, J.D.", "Ogden, JD", as.character(Pitcher)),
+         Pitcher = ifelse(Pitcher == "Leblanc, Max", "LeBlanc, Max",  as.character(Pitcher)))
+
+#summary(navs_pitchers)
+#table(navs_pitchers$AutoPitchType)
+```
+
+After sorting through all pitchers, I needed to make the following changes for each pitcher to ensure I only included fastballs:
+
+```{r}
+# p <- "LeBlanc"
+# filter(navs_pitchers, stringr::str_starts(Pitcher, p))
+# table(filter(navs_pitchers, stringr::str_starts(Pitcher, p))$AutoPitchType)
+```
+
+|       McDonald:Any pitch above 83mph is a FB (unsure if CH or not ~ 80-82)
+|       Willhoite: Changeup/Sinker to FB
+|       Heisner: Sinker/Cutter to FB
+|       Remley: Sinker to FB
+|       Ogden: Sinker/Cutter to FB
+|       Potok: Sinker to FB
+|       Kadlecik: Cutter to FB
+|       Gigliotti: Above 84 to FB
+|       Espelin: Above 84 to FB
+|       Bradley-Cooney: Cutter to FB
+|       DiLauro: Sinker to FB
+|       Jeffries: Above 82.5 to FB
+|       Marshall: Above 84 to FB
+|       Smith: Above 83 to FB
+|       Tarlin: Above 82 to FB
+|       Tringale: Above 83 to FB
+|       Kenney: Changeup/Sinker to FB
+|       LeBlanc: Sinker to FB
+
+As evident, it was not a perfect science to determining which pitches were supposed to be fastballs for each player, but this most accurately customizes the changes to each pitcher. After cleaning the fastball data I chose to look at the following metrics.
+
+```{r}
+fb <- navs_pitchers %>%
+  mutate(PitchType = ifelse((Pitcher == "McDonald, Tyler" & RelSpeed > 83) |
+                              (Pitcher == "Willhoite, Trace" & AutoPitchType == "Changeup") |
+                              (Pitcher == "Espelin, Nate" & RelSpeed > 84) |
+                              (Pitcher == "Gigliotti, Jake" & RelSpeed > 84) |
+                              (Pitcher == "Jeffries, Graham" & RelSpeed > 82.5) |
+                              (Pitcher == "Marshall, Luke" & RelSpeed > 84) |
+                              (Pitcher == "Smith, Cooper" & RelSpeed > 83) |
+                              (Pitcher == "Tarlin, Max" & RelSpeed > 82) |
+                              (Pitcher == "Tringale, Todd" & RelSpeed > 83) |
+                              (Pitcher == "Kenney, Timmy" & AutoPitchType == "Changeup"),
+                            "Four-Seam", as.character(AutoPitchType))) %>%
+  filter(PitchType %in% c("Four-Seam", "Sinker", "Cutter"),
+         Pitcher != "O'Brien, Brady")
+
+#table(fb$PitchType)
+```
+
+```{r}
+fb_pitch <- fb %>%
+  group_by(Pitcher) %>%
+  summarize(Pitches = n(),
+            SpinRate = mean(SpinRate, na.rm = T),
+            AvgVelo = mean(RelSpeed),
+            BauerUnits = SpinRate/AvgVelo,
+            VertBreak = mean(InducedVertBreak, na.rm = T),
+            HorzBreak = mean(HorzBreak, na.rm = T),
+            SumBreak = abs(HorzBreak) + abs(VertBreak),
+            RelSide = mean(RelSide),
+            RelHeight = mean(RelHeight),
+            Krate = sum(KorBB == "Strikeout")/Pitches)
+
+arrange(fb_pitch, SpinRate)
+```
+
+The players with the highest spin rate worth looking further into are Bradley-Cooney, Tringale, and McDonald, and Espelin on the other end. Both ends of spin rate are worth understanding more about, since the least effective fastballs supposedly have average spin. Below average spin from Espelin may be just as effective at throwing batters off and producing weak ground-ball contact or whiffs in the bottom of the zone.
+
+
+## Why are McDonald's and Kenney's FB Induced Vertical Breaks so low, particularly Kenney's in the negative?
+
+The induced vertical break(removing break due to gravity) of McDonald's fastball was a clear abnormality compared to other pitchers, and Kenney's even more-so in the negatives. My general assumption that fastballs rise was tested by these differences, and led to a quick realization of the impact of arm slot on a pitches movement. Kenney is an extreme side-armer, and McDonald an in between side-armer. Due to their arm slot, the way they throw a fastball puts more horizontal spin on the ball than vertical. A pitcher who pitches from a very high arm slot, in contrast, would create the most vertical spin and rise on the ball. The table below shows Kenney with one of the highest horizontal breaks, releasing from one of the lowest release heights but furthest release sides. While Kenney had a lower spin rate than McDonald, it is noteworthy that McDonald does not have eye popping vertical or horizontal break.
+
+```{r}
+select(fb_pitch, Pitcher, VertBreak, HorzBreak, RelHeight, RelSide)
+```
+
+To affirm that vertical break changes with how high an arm slot the ball is released, I ran a linear model of vertical break on release height, and got the following results:
+
+```{r}
+summary(lm(VertBreak ~ RelHeight, data = fb_pitch))
+```
+For every inch higher release point Navs pitchers got an extra 5.77 inches induced vertical rise on their fastball. This trend is supported in the plot below.
+
+```{r}
+spec_pitch <- fb_pitch %>%
+  filter(Pitcher %in% c("Bradley-Cooney, Patrick", "McDonald, Tyler",
+                        "Kenney, Timmy", "Tringale, Todd",
+                        "Espelin, Nate", "Smith, Cooper"))
+
+ggplot(fb_pitch, aes(RelHeight, VertBreak)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = F) +
+  geom_point(spec_pitch, mapping = aes(RelHeight, VertBreak)) +
+  ggrepel::geom_text_repel(spec_pitch, mapping = aes(label = Pitcher)) +
+  xlab("Release Height (in)") +
+  ylab("Induced Vertical Break (in)")
+```
+
+
+Given this, it is worthwhile to also consider someone like Cooper Smith, who although he has a very average spin rate and velocity, throws from a high arm slot and therefore gets over 20 inches of rise on his fastball. He is the opposite of Tyler McDonald who has above average spin but a low rise and more horizontal movement due to arm slot. Moving forward, I will look into Bradley-Cooney and Tringale (similar pitchers - high spin and decent rise), Kenney, a side-armer who relies on horzontal movement versus Smith who relies on a high arm slot for a lot of induced vertical movement (both average spin rates), and a low spin/rise pitcher Espelin. McDonald's sample size is much smaller and less likely to give confidence in any trends.
+
+
+## Is there a difference between whiffs in the top of the zone versus the bottom for FB with high spin and low spin? Player-by-Player Analysis
+
+For this analysis, I rely on Synergy's database and visualizations to draw conclusions pitcher-by-pitcher. Synergy is a baseball database used by collegiate teams and summer leagues across the country. All images below are heat maps of the strike zone from the pitcher's perspective. The values are the percentage of pitches under a certain filter that were in that specific part of the zone. For example, in Figure 1 2% of all of Bradley-Cooney's swinging strikes on his fastball were in the top right corner of the strike zone.
+
+#### Bradley-Cooney:
+
+![Bradley-Cooney Strikes Taken](Synergy_images\\BC.ST.png)
+
+![Bradley-Cooney Strikes Swinging](Synergy_images\\BC.SW.png)
+
+Figure 1, a zone chart of fastballs taken, shows that batters rarely took strikes in the upper part of the zone (6%), while 44% percent of fastballs taken were in the bottom of the zone. If there is a lot of rise on the fastball, batters may be more hesitant to swing when they expect it to be below the zone but stays in, compared to when they see the ball in the middle of the zone, so they swing, but it rides up. While this is worth noting, Bradley-Cooney's whiffs are spread out through the zones, rather than being higher at the top of the zone (Figure 2).
+
+
+
+#### Tringale:
+
+![Tringale all Fastballs](Synergy_images\\TT.FB.png)
+
+![Tringale Strikes Swinging](Synergy_images\\TT.SW.png)
+
+Tringale throws more fastballs in the upper part of the zone to start with (36% top or above strikezone - Figure 3), however 57% of the pitches he gets whiffs on are in that upper part or above the zone (Figure 4). This implies that he tends to get more whiffs on average in the top of the zone than elsewhere. Batters are more fooled by the rise of Tringale's fastball in the upper part of the zone than in the lower. Unlike Bradley-Cooney, Tringale threw very few fastballs in the bottom of the zone to start with, making it difficult to draw any comparisons in strikes taken in the bottom of the zone.
+
+
+
+#### Kenney: 
+
+![Kenney Strikes Taken](Synergy_images\\TK.ST.png)
+
+Batters most often watched a strike on his fastball on the left side of the zone from pitcher's perspective - 51% of the time (Figure 5). Kenney throws the ball from far on the right side of his body, across him to the left of the plate, and then has it break in to clip the left side of the plate with almost 18.5 inches of horizontal movement. Batters are likely thrown off seeing the ball move so much from one side of his body to the other, not expecting it to come back in. This would be similar to a fastball with a lot of rise that a batter expects to stay low and out but rises to catch the bottom of the zone. Therefore, I was curious if Kenney had a higher whiff rate on the right side of the plate.
+
+![Kenney Strikes Swinging](Synergy_images\\TK.SW.png)
+
+Kenney only had 14 whiffs all season; however, despite the small sample size there is still a higher rate of whiffs on the right side of the zone than on the left (5 versus 2 swings, Figure 6). The value of Kenney's deception cannot be understated here. He uses his irregular throwing path to his advantage, relying on how he causes the ball to spin, not just how much it spins.
+
+
+
+#### Smith:
+
+![Smith all Fastballs](Synergy_images\\CS.FB.png)
+
+![Smith Strikes Swinging](Synergy_images\\CS.SW.png)
+
+![Smith Strikes Taken](Synergy_images\\CS.ST.png)
+
+Smith has one of the highest induced vertical break on the Navigators, despite an average spin rate. He threw 20% of his fastballs in the top of or above the zone, but 34% percent of his whiffs were in the same area. Similarly, 19% of his fastballs were in the bottom or below the zone, while 32% of his strikes taken were in the same area. Both of these increases support previous trends that batters tend to take more fastballs in the bottom of the zone and swing and miss in the top of the zone. I continue to question, therefore, whether a high spin rate is the biggest factor in creating deception, or if a combination of several mechanics to create break is a more useful approach.
+
+
+
+#### Espelin - Low Spin Rate:
+
+![Espelin Strikes Taken](Synergy_images\\NE.ST.png)
+
+![Espelin Strikes Swinging](Synergy_images\\NE.SW.png)
+
+With a significantly below average spin rate on Espelin's fastball, batters expected the ball to rise more than it did, given his relatively high arm slot (4 out of 18 on the team). Sure enough, he gets the most swings taken in the top of the zone, where batters likely expect the fastball to rise out of the zone, and gets the most whiffs in the bottom of the zone, where batters likely expect it to stay higher in the middle of the zone. This trend is opposite that of the previous pitchers, given Espelin relies on below average spin and rise while they rely on above average metrics.
+
+
+
+#### Peyton Heisner - Average spin AND break:
+
+One final player comparison is with Peyton Heisner, who has overall average fastball numbers - both spin rate and vertical break given his arm slot. I am primarily curious if Heisner has the same increased success in getting whiffs in the top of the zone and takes in the bottom of the zone.
+
+![Heisner all Fastballs](Synergy_images\\PH.FB.png)
+
+![Heisner Strikes Swinging](Synergy_images\\PH.SW.png)
+
+![Heisner Strikes Taken](Synergy_images\\PH.ST.png)
+
+For Heisner there was less of a change, while still present, in whiff percentage in the top of the zone and strikes taken in the bottom of the zone. not much of notable increase in whiffs on his fastball in the top of the zone. Heisner had approximately 8% higher pitch percentage for whiffs or takes compared to all fastballs in corresponding zone areas. In other words, Heisner was 8% more efficient in the areas of question, while Tringale was around 20% more efficient and Cooper Smith 14% more efficient. While Heisner's fastball holds some value, the pitcher's with above and below average spin and/or break create strikes through takes and whiffs at a higher clip. Following this logic, my initial assumption would be that these pitchers are also better at forcing weak fly balls (or ground balls for Espelin), and generating quicker outs.
+
+
+
+## What are Bauer Units and why are they helpful?
+
+Driveline baseball, a data driven player development program created the Bauer Unit as a way to streamline spin rate across all talent levels. It is calculated by dividing Spin Rate by Velocity:
+
+$Bauer Units = \frac{Spin Rate}{Velocity}$
+
+When comparing professional ballplayers to college or high school players, Bauer Units(BU) removes some variability due to age and physical maturity. It measures how much spin is truly created by a pitcher, not effected by velocity, as that is expected to increase with age.
+
+```{r}
+ggplot(fb_pitch, aes(AvgVelo, SpinRate)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F)
+
+summary(lm(SpinRate ~ AvgVelo, data = fb_pitch))
+```
+
+The sample of Navigators pitchers shown above does not support a strong linear relationship between spin rate and velocity, with a p-value well above 0.05 (0.193) However, more extensive research completed by Driveline Baseball upholds the trend that spin rate tends to increase when velocity is higher [@oconnell_marsh_2016]. 
+
+Similar to spin rate, an effective fastball usually has a well above or below average BU. 
+
+```{r}
+quantile(fb_pitch$BauerUnits)
+```
+
+Looking at the data above, the average sits close to that of professional averages ~24. Navigators pitchers with the highest BU are Bradley-Cooney, Tringale, and McDonald, and the lowest being Espelin, all in-line with spin rate, as well. Ultimately, the numerous variables that effect the path of a pitch are far more complex than trying to simplify it down to spin rate or velocity. Such metrics do not account for a pitcher's arm slot, for example, and in effect induced vertical break or horizontal break. The point of spin rate on a fastball is to get the ball to move unexpectedly, whether above or below average. Stronger indicators than merely spin rate, Bauer units, or velocity include vertical and horizontal break, and a pitcher's ability to control the edges of the zone. The Navigators top spin rate and Bauer units pitcher Patrick Bradley-Cooney remains fairly ineffective due to lack of control and a high walk rate.
+
+One variable I was curious about was strikeout rate. I calculated strikeout rate by dividing number of strikeouts by number of pitches thrown rather than batters faced. Although this is not the official K-rate and is impacted by number of pitches per at-bat, it gives a good general scale of high and low strikeout pitchers. I ran a linear model of K-rate on total break and on spin rate, and vast differences resulted in the two variables' predictive power.
+
+```{r}
+summary(lm(Krate ~ SumBreak, data = fb_pitch))
+summary(lm(Krate ~ SpinRate, data = fb_pitch))
+```
+
+The model on total break had a p-value only slightly above 0.05 and an estimate two magnitudes larger than the model on spin rate. Therefore, total break has both more effect and confidence in predicting a pitcher's strikeout rate than simply spin rate. Still, however, the model gives an adjusted r-squared value of 0.165, meaning total break only predicts 16.5% of strikout rates. Still, many other factors impact a pitcher's ability to strike a batter out.
+
+
+Returning to Bauer Units, therefore, they are primarily effective for comparing players at different levels. They must be taken lightly in use with several other metrics and factors in a player's skillset. Posts originally appearing on Driveline Baseball discussed the purpose and effectiveness of BU's at the following links, and suggested further and stronger ways to analyze players' fastballs.
+
+
+
+## More from Driveline
+
+Michael O'Connell, Senior Operations Manager at Driveline, suggests that a stronger metric with similar purpose to Bauer Units could be revolutions of the ball on the way to the plate, if measured and recorded accurately. He then discusses spin axis as a key way pitchers can increase vertical movement without having to change arm slot (their natural throwing position) [@oconnell_2019]. Another Driveline research article from 2019 attempted to measure this by creating Spin+, which removes varibaility in spin rate due to velocity and spin axis. It only measures the effect of rotations on spin. Using Spin+ and spin efficiency, they then tried to predict which pitcher's has the most pitch potential to increase movement based on inherent spin characteristics [@neiswender_aucoin_oconnell_jagers_2019].
+
+Above all, O'Connell realizes the key to making a pitcher effective is his arsenal [@oconnell_2019]. Finding and working with different pitches to fool the batters and create outs is always the end goal. Building an arsenal of all pitches that have insane movement, but becomes very predictable to batters is just as ineffective as throwing poor pitches. While a guy like Bradley-Cooney may have had the most spin on his fastball, his inability to locate it tanked his value as a reliable relief arm. Driveline believes  finding the right blend of pitches for one's own body to maximize deception and effectiveness is key to creating the most value in a single pitcher. This starts with the fundamental fastball, and its many variations that are staples of every pitcher's arsenal.
+
+
+
+## Conclusion
+
+The presence of spin rate in discussions around pitching has grown exponentially over the past 20 years, with the introduction of new technology constantly building on itself. In a game so built on intuition and feel, players and coaches that have welcomed the use of advanced data such as spin rate have found stronger ways to identify inefficient spin and pitches, and maximize a pitcher's skills.
+
+Looking at fastball data from Navigator pitchers of high, average, and low spin rate, those with above average spin generally had a stronger ability to create swinging strikes in the top of the zone and get called strikes in the bottom of the zone compared to an average spin pitcher. Likewise, a below average spin pitcher got more whiffs in the bottom of the zone and called strikes at the top. The pitchers I looked into with middle of the road spin still had some effectiveness in generating swings and misses in specific parts of the zone, just not at as great an increase as the others.
+
+Spin rate, while an acceptable starting point, scratches the surface at maximizing the efficiency in a pitcher's fastball. In an effort to create outs, teams might place a greater emphasis on the result of spin, break, and the ability to pitch on the edges of the zone. While statistics such as ground ball rate or strikeout rate give an idea of a pitcher's ability to get outs, horizontal and induced vertical break, like spin rate, are raw measurements of a pitcher's throwing ability.
+
+Quantifying the efficiency of a pitcher's fastball, considering arm slot, spin rate, spin axis, and how they together effect vertical and horizontal break, is quite advanced. People continue to create ways to quantify many raw metrics into one or two overall values. Rapsodo uses spin efficiency to measure how much true spin is actually causing the ball to move, while Driveline created Spin+. Finding ways to maximize a desired effect on a fastball, from human elements to mechanical, data-driven elements, requires a breadth of knowledge and experience. Hopefully, players and coaches will continue to receive and invest in advanced data, learning how and when to use it to their advantage, without letting every number mess up mechanical fundamentals that are the basis of being an athlete.
+
+# References
